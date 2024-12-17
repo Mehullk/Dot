@@ -2,7 +2,7 @@ import sys
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon, QFont, QMovie
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QTextEdit, QLineEdit, QPushButton, QHBoxLayout, QMessageBox
-from dot import VirtualAssistant
+from dot_main import VirtualAssistant
 
 class WorkerThread(QThread):
     finished = pyqtSignal(str)
