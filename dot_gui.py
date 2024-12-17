@@ -59,7 +59,7 @@ class MainWindow(QMainWindow):
             QTextEdit {
                 border-radius: 20px;
                 background-color: rgba(0, 0, 0, 150);
-                background-image: url('bgyhu4.png'); /* Background image */
+                background-image: url('dot_bg.png'); /* Background image */
                 background-position: center;
                 background-repeat: no-repeat;
                 border: 2px solid #aaaaaa;
