@@ -1,27 +1,34 @@
 import sys
+import os
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon, QFont, QMovie
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QTextEdit, QLineEdit, QPushButton, QHBoxLayout, QMessageBox
 from dot_main import VirtualAssistant
 
+def resource_path(relative_path):
+        try:
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
 class WorkerThread(QThread):
-    finished = pyqtSignal(str)
     command_received = pyqtSignal(str)
 
-    def __init__(self, va: 'VirtualAssistant', parent=None):
-        super().__init__(parent)
+    def __init__(self, va):
+        super().__init__()
         self.va = va
         self.running = True
 
     def run(self):
         while self.running:
-            command = self.va.take_command()  # This listens to the voice input
-            if command:
-                self.command_received.emit(command)
-        self.finished.emit("Assistant stopped.")
+            try:
+                command = self.va.take_command()
+                if command:
+                    self.command_received.emit(command)
+            except Exception:
+                pass
 
     def stop(self):
-        """Gracefully stop the thread"""
         self.running = False
 
 class MainWindow(QMainWindow):
@@ -48,7 +55,7 @@ class MainWindow(QMainWindow):
         # Listening Animation
         self.animation_label = QLabel(self)
         self.animation_label.setAlignment(Qt.AlignCenter)
-        self.movie = QMovie("listening.gif")  # Replace with your animation file
+        self.movie = QMovie(resource_path("listening.gif"))  # Replace with your animation file
         self.animation_label.setMovie(self.movie)
         self.layout.addWidget(self.animation_label)
 
@@ -94,7 +101,7 @@ class MainWindow(QMainWindow):
 
         # Voice Button
         self.voice_button = QPushButton(self)
-        self.voice_button.setIcon(QIcon("voice.png"))  # Set the mic icon
+        self.voice_button.setIcon(QIcon(resource_path("voice.png")))  # Set the mic icon
         self.voice_button.setIconSize(QSize(40, 40))  # Adjust the icon size
         self.voice_button.setStyleSheet("QPushButton {"
                                         "background-color: transparent;"  # Transparent background
@@ -106,7 +113,7 @@ class MainWindow(QMainWindow):
 
         # Send Button
         self.send_button = QPushButton(self)
-        self.send_button.setIcon(QIcon("paper-plane.png"))  # Set the icon for the Send button
+        self.send_button.setIcon(QIcon(resource_path("paper-plane.png")))  # Set the icon for the Send button
         self.send_button.setIconSize(QSize(40, 40))  # Adjust the icon size
         self.send_button.setStyleSheet("QPushButton {"
                                        "background-color: transparent;"  # Transparent background
@@ -122,7 +129,7 @@ class MainWindow(QMainWindow):
         # Threading for Assistant
         self.worker_thread = None
         self.is_listening = False
-        self.is_executing = False
+        #self.is_executing = False
 
     def display_text(self, text: str):
         self.output_text.append(f"Assistant: {text}")
@@ -132,14 +139,14 @@ class MainWindow(QMainWindow):
         if not self.is_listening:
             # Start listening
             self.movie.start()
-            self.voice_button.setIcon(QIcon("stop.png"))  # Change icon to Stop
+            self.voice_button.setIcon(QIcon(resource_path("stop.png")) ) # Change icon to Stop
             self.is_listening = True
             self.start_listening()  # Start listening logic
         else:
             # Stop listening
             self.is_listening = False
             self.movie.stop()
-            self.voice_button.setIcon(QIcon("voice.png"))  # Revert to mic icon
+            self.voice_button.setIcon(QIcon(resource_path("voice.png")))  # Revert to mic icon
             if self.worker_thread is not None:
                 self.worker_thread.stop()
                 self.worker_thread.wait()
@@ -147,21 +154,27 @@ class MainWindow(QMainWindow):
             self.reset_listening("Stopped listening.")
 
     def toggle_send_mode(self):
-        """Toggle send button between send and stop mode."""
-        if not self.is_executing:
-            command = self.command_input.text()
-            if command.strip() == "":  # Ignore empty commands
-                return
-            self.command_input.clear()
-            self.is_executing = True
-            self.send_button.setIcon(QIcon("stop.png"))  # Change icon to Stop
-            self.display_text(f"Executing Command: {command}")
-            self.va.execute_command(command)  # Execute the command
-            self.finish_execution()
-        else:
-            # Stop the command (You need to implement stopping logic in your VirtualAssistant class)
-            self.display_text("Stopping command...")
-            self.finish_execution()
+        
+        command = self.command_input.text().strip()
+        if not command:
+            return
+
+        self.command_input.clear()
+
+        # Show user command
+        self.display_text(f"User: {command}")
+
+        # Change to stop icon
+        self.send_button.setIcon(QIcon(resource_path("stop.png")))
+        QApplication.processEvents()  
+
+        # Execute command
+        self.va.execute_command(command)
+
+        # Restore send icon
+        self.send_button.setIcon(QIcon(resource_path("paper-plane.png")))
+        QApplication.processEvents()
+
 
     def start_listening(self):
         """Start the voice assistant listening in a separate thread."""
@@ -175,13 +188,13 @@ class MainWindow(QMainWindow):
 
     def handle_voice_command(self, command):
         """Handle the voice command received from the worker thread."""
-        self.display_text(f"Voice Command: {command}")
+        self.display_text(f"User: {command}")
         self.va.execute_command(command)
 
     def reset_listening(self, message: str = None):
         """Resets the voice listening mode."""
         self.movie.stop()
-        self.voice_button.setIcon(QIcon("voice.png"))  # Revert Mic button to its original state
+        self.voice_button.setIcon(QIcon(resource_path("voice.png")))  # Revert Mic button to its original state
         self.worker_thread = None
         self.is_listening = False
         if message:
@@ -189,12 +202,14 @@ class MainWindow(QMainWindow):
 
     def finish_execution(self):
         """Complete the command execution and reset buttons."""
-        self.is_executing = False
-        self.send_button.setIcon(QIcon("paper-plane.png"))  # Revert to Send icon
+        #self.is_executing = False
+        self.send_button.setIcon(QIcon(resource_path("paper-plane.png")))  # Revert to Send icon
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    va = VirtualAssistant()  # Create your VirtualAssistant instance
+    va = VirtualAssistant() 
+ # Create your VirtualAssistant instance
     window = MainWindow(va)
+    va.gui_callback = window.display_text
     window.show()
     sys.exit(app.exec_())

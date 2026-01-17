@@ -1,3 +1,4 @@
+from click import command
 import speech_recognition as sr
 import shutil
 import os
@@ -8,6 +9,7 @@ import psutil
 from apscheduler.schedulers.background import BackgroundScheduler
 from urllib.parse import quote_plus
 import pyjokes
+from sqlalchemy import text
 import wikipedia
 import pywhatkit
 import requests
@@ -20,6 +22,8 @@ import pyautogui
 import re
 import pywhatkit as kit
 import time
+import threading
+
 
 
 WAKE_WORD_RESPONSES = ["hey dot", "hello dot", "you there dot", "dot", "hey", "hello"]
@@ -67,6 +71,21 @@ class VirtualAssistant:
         # Default to the first available voice if no female voice is found
 
 
+    def normalize(self, text: str) -> str:
+        text = text.lower().strip()
+
+        replacements = {
+            "please": "",
+            "could you": "",
+            "can you": "",
+            "would you": "",
+            "dot": "",
+        }
+
+        for k, v in replacements.items():
+            text = text.replace(k, v)
+
+        return text.strip()
 
     def check_internet(self) -> bool:
         """Check internet connectivity."""
@@ -76,30 +95,43 @@ class VirtualAssistant:
         except requests.ConnectionError:
             return False
 
-
-    def say(self, text: str) -> None:
-        print(f"Assistant: {text}")
+    def _speak_async(self, text: str):
         if self.use_gtts:
-            # Use gtts if online
             try:
                 tts = gTTS(text=text, lang='en-IN')
-                with tempfile.NamedTemporaryFile(delete=True) as temp_file:
+                with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as temp_file:
                     tts.save(temp_file.name)
                     os.system(f"afplay {temp_file.name}")
-            except Exception as e:
-                print(f"GTTS error: {e}")
-                self.use_gtts = False  # Switch to pyttsx3 if GTTS fails
-                self.say(text)
+            except Exception:
+                self.use_gtts = False
+                self._speak_async(text)
         else:
-            # Use pyttsx3 if offline
             try:
                 self.engine.setProperty('voice', self.voice)
                 self.engine.say(text)
                 self.engine.runAndWait()
-            except Exception as e:
-                print(f"pyttsx3 error: {e}")
-                self.use_gtts = True  # Switch back to gtts if pyttsx3 fails
-                self.say(text)
+            except Exception:
+                self.use_gtts = True
+                self._speak_async(text)
+
+    def say(self, text: str) -> None:
+        # 1️⃣ Update GUI immediately
+        if hasattr(self, "gui_callback") and callable(self.gui_callback):
+            self.gui_callback(text)
+
+        # 2️⃣ Print immediately
+        print(f"Assistant: {text}")
+
+        # 3️⃣ Speak in background (NON-BLOCKING)
+        speech_thread = threading.Thread(
+            target=self._speak_async,
+            args=(text,),
+            daemon=True
+        )
+        speech_thread.start()
+
+
+
 
     def display_text(self, text: str) -> None:
         """Print the text to console."""
@@ -141,25 +173,24 @@ class VirtualAssistant:
     #             except Exception as e:
     #                 self.say(f"An unexpected error occurred: {e}")
 
-    def take_command(self, text_input: str = None , timeout: int = 10) -> str:
+    def take_command(self, text_input: str = None, timeout: int = 10) -> str:
         if text_input:
             return text_input.lower()
 
-        with sr.Microphone() as source:
-            self.recognizer.adjust_for_ambient_noise(source)
-            self.display_text("Listening for command...")
-            try:
+        try:
+            with sr.Microphone() as source:
+                self.recognizer.adjust_for_ambient_noise(source)
                 audio = self.recognizer.listen(source, timeout=timeout)
                 query = self.recognizer.recognize_google(audio, language="en-IN").lower()
-                self.display_text(f"You said: {query}")
                 return query
-            except sr.UnknownValueError:
-                return "Sorry, I didn't understand that."
-            except sr.WaitTimeoutError:
-                return "Sorry, I didn't hear anything."
-            except Exception as e:
-                self.say(f"An unexpected error occurred: {e}")
-                return "Sorry, an error occurred."
+        except sr.WaitTimeoutError:
+            return ""
+        except sr.UnknownValueError:
+            return ""
+        except Exception as e:
+            print("Mic error:", e)
+            return ""
+
 
 
 
@@ -197,10 +228,6 @@ class VirtualAssistant:
 
             # Handle other commands
             self.execute_command(command)
-
-
-
-
 
 
     def open_application(self, app_name: str) -> None:
@@ -718,7 +745,7 @@ class VirtualAssistant:
 
     def execute_command(self, command: str) -> None:
         """Executes the user's command."""
-
+        command = self.normalize(command)
         try:
             if "open application" in command:#1
                 app_name = command.replace("open application", "").strip()
